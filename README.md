@@ -1,0 +1,98 @@
+[English](./README.md) | [简体中文](./README_zh.md) | [日本語](./README_ja.md)
+
+# Umami Router
+
+This project is a secondary development based on [Umami](https://github.com/umami-software/umami).
+
+## Overview
+
+**Umami Router** is a proxy server and client SDK designed to help frontend applications securely and efficiently integrate with Umami Analytics.
+
+The **main purpose** of this project is to provide a convenient way to route tracking data from various independent websites to a single, designated upstream server.
+
+### Typical Use Case
+
+For personal use, it makes tracking data from cloud-deployed websites extremely simple and secure. You can deploy this `router server` on your cloud server alongside your web applications. The router collects the tracking data and securely forwards it to a local server running the Umami database within the same **Tailscale** private network. This allows you to easily monitor your websites' traffic and data behaviors locally, without exposing your Umami database instance directly to the public internet.
+
+## Project Structure
+
+The project is structured as a monorepo utilizing **Bun**:
+
+- **`server/`**: A Node.js/Bun proxy server (`@umami_router/server`) that routes the Umami script and tracking requests. Features include CORS handling, origin validation, request logging, and rate-limiting.
+- **`sdk/`**: A TypeScript client SDK (`@umami_router/sdk`) for frontend applications, providing core tracking capabilities with dedicated framework integrations for **Vue 3** and **Next.js 14+**.
+- **`demo/`**: Demonstration apps using the SDK.
+  - `demo/vue/`: Vue 3 + Vite integration example.
+  - `demo/nextjs/`: Next.js 14 App Router integration example.
+
+## Environment Variables
+
+### Server Configuration (`server/`)
+
+The proxy server relies on the following environment variables to route traffic securely.
+
+**Important Note on CORS:** For security reasons, if the origin whitelist (`UMAMI_ALLOWED_ORIGINS`) is not configured, **all cross-origin requests will be rejected** with a `403 Forbidden` error by default. You must explicitly configure this whitelist to include the domains from which you expect to receive tracking data.
+
+| Variable | Description | Default / Requirement |
+| --- | --- | --- |
+| `UMAMI_UPSTREAM_HOST` | The upstream Umami host (e.g., `localhost:3000` or a Tailscale IP). | **Required** |
+| `UMAMI_WEBSITE_IDS` | Comma-separated list of allowed Website IDs for tracking. | Optional |
+| `UMAMI_WEBSITE_ID` | Fallback single Website ID. | Optional |
+| `UMAMI_TIMEOUT_MS` | Proxy request timeout in milliseconds. | `5000` |
+| `UMAMI_RATE_LIMIT_WINDOW_MS`| Rate limiting window in milliseconds. | `60000` |
+| `UMAMI_RATE_LIMIT_MAX` | Maximum number of requests allowed per window. | `100` |
+| `UMAMI_ALLOWED_ORIGINS` | Comma-separated list of allowed origins (CORS). | Optional (Allows all if empty) |
+| `UMAMI_SCRIPT_PATH` | Custom path to the upstream Umami tracking script. | `/script.js` |
+| `PORT` | The port the proxy server listens on. | `3000` |
+
+### Vue Demo Configuration (`demo/vue/`)
+
+Place these variables in a `.env` file within the `demo/vue` directory.
+
+| Variable | Description |
+| --- | --- |
+| `VITE_UMAMI_WEBSITE_ID` | The Website ID registered in your Umami dashboard. |
+| `VITE_UMAMI_PROXY_PATH` | The path the SDK uses to reach the proxy server (Default: `/trpc`). |
+| `VITE_UMAMI_SERVER_ORIGIN` | The origin of the proxy server used in `vite.config.ts` for local proxying (e.g., `http://localhost:3000`). |
+
+### Next.js Demo Configuration (`demo/nextjs/`)
+
+Place these variables in a `.env.local` file within the `demo/nextjs` directory.
+
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID`| The Website ID registered in your Umami dashboard. |
+| `NEXT_PUBLIC_UMAMI_PROXY_PATH`| The path the SDK uses to reach the proxy server (Default: `/trpc`). |
+| `UMAMI_SERVER_ORIGIN` | The origin of the proxy server used in `next.config.mjs` for routing (e.g., `http://localhost:3000`). |
+
+## Getting Started
+
+The project heavily relies on **Bun** (`bun@1.3.9+`) as its primary package manager and task runner.
+
+**1. Install dependencies**
+```bash
+# In the root directory
+bun install
+```
+
+**2. Start the proxy server**
+```bash
+cd server
+# Copy and configure your environment variables
+# cp .env.example .env 
+bun run dev
+```
+
+**3. Run the demos**
+```bash
+# For Next.js Demo
+cd demo/nextjs
+bun run dev
+
+# For Vue Demo
+cd demo/vue
+bun run dev
+```
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
