@@ -1,0 +1,13 @@
+# Demo directory
+demo/
+
+# macOS
+.DS_Store
+
+# Common ignores
+node_modules/
+.env
+.env.local
+
+sdk/dist/**
+server/dist/**

@@ -1,0 +1,41 @@
+{
+  "name": "@umami_router/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun run build:bun",
+    "build:node": "tsc",
+    "build:bun": "bunx tsc",
+    "dev": "bun run dev:bun",
+    "dev:node": "tsx watch src/index.ts",
+    "dev:bun": "bun --watch src/index.ts",
+    "start": "bun run start:bun",
+    "start:node": "node dist/index.js",
+    "start:bun": "bun dist/index.js",
+    "typecheck": "bun run typecheck:bun",
+    "typecheck:node": "tsc --noEmit",
+    "typecheck:bun": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@trpc/server": "^11.10.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.1.0"
+  },
+  "packageManager": "bun@1.3.9"
+}
