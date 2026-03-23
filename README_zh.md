@@ -24,6 +24,145 @@
   - `demo/vue/`: Vue 3 + Vite 的集成演示。
   - `demo/nextjs/`: Next.js 14 (App Router) 的集成演示。
 
+## 接入 / 框架集成
+
+### Vue 3 项目
+
+**1. 注册插件**
+```typescript
+import { createApp } from 'vue';
+import { createUmamiPlugin } from '@umami_router/sdk/vue';
+import App from './App.vue';
+import router from './router';
+
+const app = createApp(App);
+
+app.use(createUmamiPlugin({
+  websiteId: import.meta.env.VITE_UMAMI_WEBSITE_ID,
+  proxyPath: '/trpc', // 代理服务器路径
+  autoTrack: true,
+  useRouter: true,    // 监听路由变化自动上报 pageview
+}));
+
+app.use(router);
+app.mount('#app');
+```
+
+**2. 在组件中追踪自定义事件**
+```vue
+<script setup lang="ts">
+import { useEventTrack } from '@umami_router/sdk/vue';
+
+const { trackEvent } = useEventTrack();
+
+const handleClick = () => {
+  trackEvent('button_click', { buttonName: 'submit' });
+};
+</script>
+```
+
+**3. 配置开发代理 (`vite.config.ts`)**
+为了在开发环境下避免跨域问题并使请求表现为同源请求，需要在 Vite 中配置代理。
+
+**注意：** 这里的代理配置仅在本地开发 (`vite dev`) 时生效。在生产环境中部署时，你必须在你的 Web 服务器（如 Nginx 配置 `location` 块，或者配置 Vercel、Cloudflare 的反向代理）中设置路由，将 `/trpc` 和 `/umami` 转发到 router server。
+
+```ts
+import { defineConfig, loadEnv } from 'vite';
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const umamiServerOrigin = env.VITE_UMAMI_SERVER_ORIGIN || 'http://localhost:3000';
+
+  return {
+    server: {
+      proxy: {
+        '/trpc': { target: umamiServerOrigin, changeOrigin: true },
+        '/umami': { target: umamiServerOrigin, changeOrigin: true },
+      },
+    },
+  };
+});
+```
+
+### Next.js 14 项目 (App Router)
+
+**1. 创建 Provider 组件 (`components/TrackerProvider.tsx`)**
+```tsx
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { useUmami, usePageviewTracking, useEventTracking } from '@umami_router/sdk';
+
+export function TrackerProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  useUmami({
+    websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
+    proxyPath: '/trpc',
+    autoTrack: true,
+  });
+
+  // 监听路由变化自动上报 pageview
+  usePageviewTracking(() => pathname);
+  // 向子组件暴露事件打点函数
+  useEventTracking();
+
+  return <>{children}</>;
+}
+```
+
+**2. 包裹应用 (`app/layout.tsx`)**
+```tsx
+import { TrackerProvider } from '@/components/TrackerProvider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TrackerProvider>
+          {children}
+        </TrackerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**3. 在客户端组件中追踪自定义事件**
+```tsx
+'use client';
+import { useEventTracking } from "@umami_router/sdk";
+
+export default function TrackedButton() {
+  const { trackEvent } = useEventTracking();
+
+  return (
+    <button onClick={() => trackEvent("custom_click", { foo: "bar" })}>
+      Track
+    </button>
+  );
+}
+```
+
+**4. 配置 API 路由重写 (`next.config.mjs`)**
+为了避免跨域问题并将所有请求作为同源请求安全地代理给 router server，需要在 Next.js 中配置路由重写。
+
+**注意：** 路由重写在开发环境和生产环境 (`next start`) 中均有效。但如果你使用的是静态导出 (`output: 'export'`)，则不支持该功能，你需要直接在部署平台（如 Nginx、Vercel 等）上配置反向代理。
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    const target = process.env.UMAMI_SERVER_ORIGIN ?? 'http://localhost:3000';
+    return [
+      { source: '/trpc/:path*', destination: `${target}/trpc/:path*` },
+      { source: '/umami/:path*', destination: `${target}/umami/:path*` },
+    ];
+  },
+};
+export default nextConfig;
+```
+
 ## 环境变量配置
 
 ### 服务器配置 (`server/`)
@@ -40,7 +179,7 @@
 | `UMAMI_TIMEOUT_MS` | 代理请求的超时时间（毫秒）。 | `5000` |
 | `UMAMI_RATE_LIMIT_WINDOW_MS`| 限流窗口时间（毫秒）。 | `60000` |
 | `UMAMI_RATE_LIMIT_MAX` | 每个限流窗口内允许的最大请求数。 | `100` |
-| `UMAMI_ALLOWED_ORIGINS` | 允许跨域的 Origin 列表（多个用逗号分隔）。 | 选填（为空则允许所有） |
+| `UMAMI_ALLOWED_ORIGINS` | 允许跨域的 Origin 列表（多个用逗号分隔）。 | 选填（为空则拒绝所有跨域请求） |
 | `UMAMI_SCRIPT_PATH` | 上游 Umami 脚本的具体路径。 | `/script.js` |
 | `PORT` | 代理服务器的监听端口。 | `3000` |
 

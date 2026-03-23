@@ -24,6 +24,145 @@
   - `demo/vue/`: Vue 3 + Vite アプリケーションのデモ。
   - `demo/nextjs/`: Next.js 14 (App Router) アプリケーションのデモ。
 
+## 利用方法 / 組み込み
+
+### Vue 3
+
+**1. プラグインのセットアップ**
+```typescript
+import { createApp } from 'vue';
+import { createUmamiPlugin } from '@umami_router/sdk/vue';
+import App from './App.vue';
+import router from './router';
+
+const app = createApp(App);
+
+app.use(createUmamiPlugin({
+  websiteId: import.meta.env.VITE_UMAMI_WEBSITE_ID,
+  proxyPath: '/trpc', // プロキシサーバーのパス
+  autoTrack: true,
+  useRouter: true,    // ルート変更時に自動でページビューをトラッキング
+}));
+
+app.use(router);
+app.mount('#app');
+```
+
+**2. コンポーネントでのカスタムイベントのトラッキング**
+```vue
+<script setup lang="ts">
+import { useEventTrack } from '@umami_router/sdk/vue';
+
+const { trackEvent } = useEventTrack();
+
+const handleClick = () => {
+  trackEvent('button_click', { buttonName: 'submit' });
+};
+</script>
+```
+
+**3. 開発用プロキシの設定 (`vite.config.ts`)**
+ローカル開発時のCORSの問題を回避し、同一生成元（same-origin）の要求として処理するために、Viteのプロキシを設定します。
+
+**注意：** このプロキシ設定はローカル開発 (`vite dev`) 時のみ有効です。本番環境では、Webサーバー（Nginxの `location` ブロックや、Vercel、Cloudflareなどのルーティング機能）で `/trpc` と `/umami` をプロキシサーバーへ明示的にリバースプロキシ設定する必要があります。
+
+```ts
+import { defineConfig, loadEnv } from 'vite';
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const umamiServerOrigin = env.VITE_UMAMI_SERVER_ORIGIN || 'http://localhost:3000';
+
+  return {
+    server: {
+      proxy: {
+        '/trpc': { target: umamiServerOrigin, changeOrigin: true },
+        '/umami': { target: umamiServerOrigin, changeOrigin: true },
+      },
+    },
+  };
+});
+```
+
+### Next.js 14 (App Router)
+
+**1. Providerコンポーネントの作成 (`components/TrackerProvider.tsx`)**
+```tsx
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { useUmami, usePageviewTracking, useEventTracking } from '@umami_router/sdk';
+
+export function TrackerProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  useUmami({
+    websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
+    proxyPath: '/trpc',
+    autoTrack: true,
+  });
+
+  // ルート変更時に自動でページビューをトラッキング
+  usePageviewTracking(() => pathname);
+  // 子コンポーネントにイベントトラッキングを公開
+  useEventTracking();
+
+  return <>{children}</>;
+}
+```
+
+**2. アプリケーションのラップ (`app/layout.tsx`)**
+```tsx
+import { TrackerProvider } from '@/components/TrackerProvider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TrackerProvider>
+          {children}
+        </TrackerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**3. クライアントコンポーネントでのカスタムイベントのトラッキング**
+```tsx
+'use client';
+import { useEventTracking } from "@umami_router/sdk";
+
+export default function TrackedButton() {
+  const { trackEvent } = useEventTracking();
+
+  return (
+    <button onClick={() => trackEvent("custom_click", { foo: "bar" })}>
+      Track
+    </button>
+  );
+}
+```
+
+**4. APIリライトの設定 (`next.config.mjs`)**
+CORSの問題を回避し、すべてのトラッキング要求を同一生成元（same-origin）として安全にプロキシサーバーへルーティングするために、Next.jsのリライトを設定します。
+
+**注意：** この設定は開発環境と本番環境 (`next start`) の両方で機能します。ただし、静的HTMLエクスポート (`output: 'export'`) を使用している場合はこのリライト機能はサポートされないため、デプロイ先のプラットフォーム（Nginx、Vercelなど）で直接リバースプロキシを設定する必要があります。
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    const target = process.env.UMAMI_SERVER_ORIGIN ?? 'http://localhost:3000';
+    return [
+      { source: '/trpc/:path*', destination: `${target}/trpc/:path*` },
+      { source: '/umami/:path*', destination: `${target}/umami/:path*` },
+    ];
+  },
+};
+export default nextConfig;
+```
+
 ## 環境変数
 
 ### サーバー設定 (`server/`)
@@ -40,7 +179,7 @@
 | `UMAMI_TIMEOUT_MS` | プロキシリクエストのタイムアウト（ミリ秒）。 | `5000` |
 | `UMAMI_RATE_LIMIT_WINDOW_MS`| レート制限のウィンドウ時間（ミリ秒）。 | `60000` |
 | `UMAMI_RATE_LIMIT_MAX` | 1ウィンドウあたりの最大リクエスト数。 | `100` |
-| `UMAMI_ALLOWED_ORIGINS` | 許可する Origin (CORS) リスト（カンマ区切り）。 | 任意（空の場合はすべて許可） |
+| `UMAMI_ALLOWED_ORIGINS` | 許可する Origin (CORS) リスト（カンマ区切り）。 | 任意（空の場合はすべてのクロスドメイン要求を拒否） |
 | `UMAMI_SCRIPT_PATH` | 上流の Umami トラッキングスクリプトへのカスタムパス。 | `/script.js` |
 | `PORT` | サーバーの待受ポート番号。 | `3000` |
 

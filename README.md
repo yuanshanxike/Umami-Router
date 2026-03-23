@@ -24,6 +24,146 @@ The project is structured as a monorepo utilizing **Bun**:
   - `demo/vue/`: Vue 3 + Vite integration example.
   - `demo/nextjs/`: Next.js 14 App Router integration example.
 
+## Usage / Integration
+
+### Vue 3
+
+**1. Setup Plugin**
+```typescript
+import { createApp } from 'vue';
+import { createUmamiPlugin } from '@umami_router/sdk/vue';
+import App from './App.vue';
+import router from './router';
+
+const app = createApp(App);
+
+app.use(createUmamiPlugin({
+  websiteId: import.meta.env.VITE_UMAMI_WEBSITE_ID,
+  proxyPath: '/trpc', // Path to the proxy server
+  autoTrack: true,
+  useRouter: true,    // Automatically tracks pageviews on route change
+}));
+
+app.use(router);
+app.mount('#app');
+```
+
+**2. Track Events in Components**
+```vue
+<script setup lang="ts">
+import { useEventTrack } from '@umami_router/sdk/vue';
+
+const { trackEvent } = useEventTrack();
+
+const handleClick = () => {
+  trackEvent('button_click', { buttonName: 'submit' });
+};
+</script>
+```
+
+**3. Configure Development Proxy (`vite.config.ts`)**
+To avoid CORS issues during local development, configure the Vite proxy to route tracking requests to your router server. 
+
+**Note:** This proxy is only active during development (`vite dev`). In production, you must configure your web server (e.g., Nginx `location` block, Vercel `rewrites`, or Cloudflare) to reverse proxy `/trpc` and `/umami` to the router server.
+
+```ts
+import { defineConfig, loadEnv } from 'vite';
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const umamiServerOrigin = env.VITE_UMAMI_SERVER_ORIGIN || 'http://localhost:3000';
+
+  return {
+    server: {
+      proxy: {
+        '/trpc': { target: umamiServerOrigin, changeOrigin: true },
+        '/umami': { target: umamiServerOrigin, changeOrigin: true },
+      },
+    },
+  };
+});
+```
+
+### Next.js 14 (App Router)
+
+**1. Create a Provider Component (`components/TrackerProvider.tsx`)**
+```tsx
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { useUmami, usePageviewTracking, useEventTracking } from '@umami_router/sdk';
+
+export function TrackerProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  useUmami({
+    websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
+    proxyPath: '/trpc',
+    autoTrack: true,
+  });
+
+  // Auto track pageviews on route changes
+  usePageviewTracking(() => pathname);
+  // Expose event tracking to child components
+  useEventTracking();
+
+  return <>{children}</>;
+}
+```
+
+**2. Wrap your application (`app/layout.tsx`)**
+```tsx
+import { TrackerProvider } from '@/components/TrackerProvider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TrackerProvider>
+          {children}
+        </TrackerProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**3. Track Events in Client Components**
+```tsx
+'use client';
+
+import { useEventTracking } from "@umami_router/sdk";
+
+export default function TrackedButton() {
+  const { trackEvent } = useEventTracking();
+
+  return (
+    <button onClick={() => trackEvent("custom_click", { foo: "bar" })}>
+      Track
+    </button>
+  );
+}
+```
+
+**4. Configure API Rewrites (`next.config.mjs`)**
+To avoid CORS issues and route tracking requests securely as same-origin requests, configure Next.js rewrites to proxy the traffic to your router server. 
+
+**Note:** This works in both development and production (`next start`). However, if you are using static HTML exports (`output: 'export'`), Next.js rewrites are not supported, and you must configure a reverse proxy on your deployment platform.
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    const target = process.env.UMAMI_SERVER_ORIGIN ?? 'http://localhost:3000';
+    return [
+      { source: '/trpc/:path*', destination: `${target}/trpc/:path*` },
+      { source: '/umami/:path*', destination: `${target}/umami/:path*` },
+    ];
+  },
+};
+export default nextConfig;
+```
+
 ## Environment Variables
 
 ### Server Configuration (`server/`)
@@ -40,7 +180,7 @@ The proxy server relies on the following environment variables to route traffic 
 | `UMAMI_TIMEOUT_MS` | Proxy request timeout in milliseconds. | `5000` |
 | `UMAMI_RATE_LIMIT_WINDOW_MS`| Rate limiting window in milliseconds. | `60000` |
 | `UMAMI_RATE_LIMIT_MAX` | Maximum number of requests allowed per window. | `100` |
-| `UMAMI_ALLOWED_ORIGINS` | Comma-separated list of allowed origins (CORS). | Optional (Allows all if empty) |
+| `UMAMI_ALLOWED_ORIGINS` | Comma-separated list of allowed origins (CORS). | Optional (Rejects all cross-origin if empty) |
 | `UMAMI_SCRIPT_PATH` | Custom path to the upstream Umami tracking script. | `/script.js` |
 | `PORT` | The port the proxy server listens on. | `3000` |
 
