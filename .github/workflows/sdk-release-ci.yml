@@ -3,6 +3,7 @@ name: SDK Release CI
 on:
   push:
     tags:
+      - 'v*'
       - 'release*'
 
 permissions:
