@@ -1,0 +1,52 @@
+name: SDK Release CI
+
+on:
+  push:
+    tags:
+      - 'release*'
+
+permissions:
+  contents: write
+
+jobs:
+  lint-and-pack-sdk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag commit is on main
+        run: |
+          git fetch origin main --depth=1
+          git branch --remotes --contains "$GITHUB_SHA" | grep -q 'origin/main'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: bun install --frozen-lockfile
+
+      - name: Lint SDK
+        working-directory: sdk
+        run: bun run lint
+
+      - name: Build SDK
+        working-directory: sdk
+        run: bun run build
+
+      - name: Pack SDK
+        working-directory: sdk
+        run: bun pm pack
+
+      - name: Upload package to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sdk/*.tgz
+          fail_on_unmatched_files: true
+          generate_release_notes: true

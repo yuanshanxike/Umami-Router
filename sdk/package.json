@@ -23,6 +23,7 @@
     }
   },
   "scripts": {
+    "lint": "bun run typecheck",
     "build": "bun run build:bun",
     "build:node": "tsup",
     "build:bun": "bunx tsup",
