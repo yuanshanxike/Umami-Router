@@ -1,5 +1,16 @@
 # Demo directory
-demo/
+# Ignore build outputs and dependencies
+demo/**/node_modules/
+demo/**/.next/
+demo/**/dist/
+demo/**/.env
+demo/**/.DS_Store
+demo/**/*tsbuildinfo
+demo/**/vite.config.d.ts
+
+# Build outputs
+sdk/dist/**
+server/dist/**
 
 # macOS
 .DS_Store
@@ -8,6 +19,3 @@ demo/
 node_modules/
 .env
 .env.local
-
-sdk/dist/**
-server/dist/**
