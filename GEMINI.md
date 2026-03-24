@@ -40,5 +40,5 @@ Navigate to the respective directory and run:
 - **Package Manager**: Use `bun` for installing packages and running scripts across the repository.
 - **Typing**: The project is strictly typed using TypeScript. Run `bun run typecheck` to ensure no typing regressions.
 - **Formatting / Linting**: Currently no specific linter is defined at the root, but ensure code follows modern TypeScript conventions.
-- **Server Architecture**: The server acts as a middleware. Any new proxy logic or endpoints should be added following the existing robust patterns (checking CORS, validating origins, logging requests). It makes use of `http` and `@trpc/server/adapters/standalone`.
+- **Server Architecture**: The server acts as a middleware. Any new proxy logic or endpoints should be added following the existing robust patterns (checking CORS, validating origins, logging requests). It makes use of `http` and `@trpc/server/adapters/standalone`. Note that cross-origin requests are **denied by default**; you must explicitly configure the `UMAMI_ALLOWED_ORIGINS` environment variable to allow frontend clients to connect.
 - **SDK Exports**: The SDK exposes core functions, as well as specific entry points for frameworks (`@umami_router/sdk/vue` and `@umami_router/sdk/nextjs`). Be careful to maintain these exports when refactoring.

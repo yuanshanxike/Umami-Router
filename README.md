@@ -24,6 +24,51 @@ The project is structured as a monorepo utilizing **Bun**:
   - `demo/vue/`: Vue 3 + Vite integration example.
   - `demo/nextjs/`: Next.js 14 App Router integration example.
 
+## AI Agent Skill Integration
+
+This project includes an **AI Agent skill** (`skills/umami-sdk/`) that provides contextual guidance when integrating `@umami_router/sdk` into your applications. It is compatible with agent CLIs like Claude Code and Gemini CLI.
+
+### What the Skill Provides
+
+The skill automatically activates when working on:
+- SDK integration with Vue 3 or Next.js
+- Tracking pageviews and events implementation
+- Tracker options configuration
+- Using `createUmamiPlugin`, `useTracker`, `usePageTrack`, `useEventTrack` (Vue)
+- Using `useUmami`, `usePageviewTracking`, `useEventTracking` (and their Pages Router variants in Next.js)
+- Type definitions (`TrackerConfig`, `HealthStatus`, `TrackOptions`)
+- Setting up the proxy server for Umami
+- Troubleshooting tracker initialization or tracking failures
+
+### Installation
+
+**1. Quick Installation (Recommended)**
+
+You can quickly install the skill directly from this repository:
+
+```bash
+npx skills install yuanshanxike/Umami-Router
+```
+
+**2. Manual Installation**
+
+Copy the skill folder into your agent's skills directory (e.g., `~/.claude/skills/` or `~/.gemini/skills/`):
+
+```bash
+# The skill is located at:
+skills/umami-sdk/
+```
+
+### Usage Example
+
+The skill enables AI agents to help with tasks like:
+
+- Track custom events in Vue components
+- Configure auto-tracking for Next.js App Router
+- Set up the tracker with custom proxy paths
+- Implement pageview tracking with route changes
+- Debug tracker initialization issues
+
 ## Usage / Integration
 
 ### Vue 3

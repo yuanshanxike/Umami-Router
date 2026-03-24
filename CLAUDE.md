@@ -99,3 +99,24 @@ The server uses tRPC for type-safe API communication. Router procedures are defi
 - **TypeScript**: Strict typing throughout; run `bun run typecheck` before committing
 - **Server Origin Validation**: `UmamiProxyService.checkOrigin()` validates CORS origins - add new origins to the allowlist in `UmamiProxyService.ts`
 - **SDK Bundling**: Uses tsup for both Node.js and browser builds; Vue plugin is bundled separately
+- **SDK Release Process**: Releases are triggered by git tags matching `v*` or `release*`. The CI workflow runs `bun pm pack` to create a `.tgz` package for GitHub releases
+
+## Key Implementation Details
+
+### Retry Queue
+The SDK includes a `RetryQueue` (`sdk/src/core/RetryQueue.ts`) that automatically retries failed tracking requests. Configure via tracker options:
+- `retryQueueSize`: Maximum queued requests (default: 100)
+- `retryAttempts`: Number of retry attempts (default: 3)
+- `retryDelay`: Delay between retries in ms (default: 1000)
+
+### tRPC Router (Server)
+The server defines tRPC procedures in `server/src/trpc.ts` for type-safe communication. SDK calls these via `createUmamiRouterClient()` which uses `@trpc/client`.
+
+### Rate Limiting
+The server uses a sliding window rate limiter (`server/src/rate-limiter.ts`). Configure via environment variables:
+- `UMAMI_RATE_LIMIT_WINDOW_MS`: Window size (default: 60000)
+- `UMAMI_RATE_LIMIT_MAX`: Max requests per window (default: 100)
+
+### Required Environment Variables
+- `UMAMI_UPSTREAM_HOST`: Required - The upstream Umami host (e.g., `localhost:3000` or Tailscale IP)
+- `UMAMI_ALLOWED_ORIGINS`: CORS whitelist (comma-separated). If empty, all cross-origin requests are rejected

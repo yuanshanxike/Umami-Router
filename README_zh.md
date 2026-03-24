@@ -24,6 +24,51 @@
   - `demo/vue/`: Vue 3 + Vite 的集成演示。
   - `demo/nextjs/`: Next.js 14 (App Router) 的集成演示。
 
+## AI Agent Skill 集成
+
+本项目包含一个 **AI Agent skill**（`skills/umami-sdk/`），用于在使用 `@umami_router/sdk` 集成时提供上下文指导。它兼容如 Claude Code 和 Gemini CLI 等 Agent 工具。
+
+### Skill 功能
+
+该 skill 会在以下场景自动激活：
+- SDK 与 Vue 3 或 Next.js 的集成
+- Pageview 和事件追踪的实现
+- Tracker 选项配置
+- 使用 `createUmamiPlugin`、`useTracker`、`usePageTrack`、`useEventTrack`（Vue）
+- 使用 `useUmami`、`usePageviewTracking`、`useEventTracking`（及 Next.js Pages Router 对应的版本）
+- 类型定义（`TrackerConfig`、`HealthStatus`、`TrackOptions`）
+- 设置 Umami 代理服务器
+- 排查 tracker 初始化或追踪失败问题
+
+### 安装方法
+
+**1. 快速安装（推荐）**
+
+可以直接通过命令便捷安装：
+
+```bash
+npx skills install yuanshanxike/Umami-Router
+```
+
+**2. 手动安装**
+
+将 skill 文件夹复制到你的 Agent 工具的 skills 目录（例如 `~/.claude/skills/` 或 `~/.gemini/skills/`）：
+
+```bash
+# skill 位置：
+skills/umami-sdk/
+```
+
+### 使用示例
+
+该 skill 可帮助 AI Agent 完成以下任务：
+
+- 在 Vue 组件中追踪自定义事件
+- 为 Next.js App Router 配置自动追踪
+- 设置自定义代理路径的 tracker
+- 实现路由变化的页面追踪
+- 调试 tracker 初始化问题
+
 ## 接入 / 框架集成
 
 ### Vue 3 项目

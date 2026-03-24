@@ -24,6 +24,51 @@
   - `demo/vue/`: Vue 3 + Vite アプリケーションのデモ。
   - `demo/nextjs/`: Next.js 14 (App Router) アプリケーションのデモ。
 
+## AI Agent Skill 統合
+
+本プロジェクトには **`@umami_router/sdk`** の統合時にコンテキストガイドを提供する **AI Agent skill**（`skills/umami-sdk/`）が含まれています。Claude Code や Gemini CLI のような Agent CLI ツールと互換性があります。
+
+### Skill の機能
+
+以下の場面で skill が自動的に有効になります：
+- SDK と Vue 3 または Next.js の統合
+- ページビューとイベントのトラッキング実装
+- Tracker オプションの設定
+- `createUmamiPlugin`、`useTracker`、`usePageTrack`、`useEventTrack` の使用（Vue）
+- `useUmami`、`usePageviewTracking`、`useEventTracking` （および Next.js Pages Router 向けのバリアント）の使用
+- 型定義（`TrackerConfig`、`HealthStatus`、`TrackOptions`）
+- Umami プロキシサーバーのセットアップ
+- Tracker の初期化やトラッキング失敗のトラブルシューティング
+
+### インストール方法
+
+**1. クイックインストール（推奨）**
+
+以下のコマンドで簡単にインストールできます：
+
+```bash
+npx skills install yuanshanxike/Umami-Router
+```
+
+**2. 手動インストール**
+
+skill フォルダを Agent ツールの skills ディレクトリ（例：`~/.claude/skills/` または `~/.gemini/skills/`）にコピーします：
+
+```bash
+# skill の場所：
+skills/umami-sdk/
+```
+
+### 使用例
+
+この skill により、AI Agent は以下のようなタスクをサポートできます：
+
+- Vue コンポーネントでカスタムイベントをトラッキング
+- Next.js App Router の自動トラッキングを設定
+- カスタムプロキシパスで tracker をセットアップ
+- ルート変更時のページビュートラッキングを実装
+- Tracker の初期化をデバッグ
+
 ## 利用方法 / 組み込み
 
 ### Vue 3
