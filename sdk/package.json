@@ -1,6 +1,6 @@
 {
   "name": "@umami_router/sdk",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Umami analytics SDK with Vue and Next.js integrations",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
