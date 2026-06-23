@@ -7,6 +7,7 @@ export interface UmamiEnv {
   UMAMI_RATE_LIMIT_MAX?: string;
   UMAMI_ALLOWED_ORIGINS?: string;
   UMAMI_SCRIPT_PATH?: string;
+  UMAMI_RECORDER_PATH?: string;
 }
 
 declare global {

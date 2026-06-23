@@ -16,6 +16,7 @@ export const umamiRouter = t.router({
         websiteId: z.string(),
         apiPath: z.string(),
         scriptPath: z.string(),
+        recorderPath: z.string(),
         proxyPath: z.string(),
       })
     )

@@ -2,7 +2,7 @@ import { createTRPCUntypedClient, httpLink } from '@trpc/client';
 import type { HealthStatus, TrackerConfig } from '../types';
 
 export interface UmamiRouterClient {
-  getConfig: () => Promise<TrackerConfig>;
+  getConfig: (websiteId?: string) => Promise<TrackerConfig>;
   getHealth: () => Promise<HealthStatus>;
 }
 
@@ -21,12 +21,13 @@ function parseTrackerConfig(value: unknown): TrackerConfig {
     throw new Error('Invalid tRPC getConfig response');
   }
 
-  const { websiteId, apiPath, scriptPath, proxyPath } = value;
+  const { websiteId, apiPath, scriptPath, recorderPath, proxyPath } = value;
 
   if (
     typeof websiteId !== 'string' ||
     typeof apiPath !== 'string' ||
     typeof scriptPath !== 'string' ||
+    typeof recorderPath !== 'string' ||
     typeof proxyPath !== 'string'
   ) {
     throw new Error('Invalid tRPC getConfig response');
@@ -36,6 +37,7 @@ function parseTrackerConfig(value: unknown): TrackerConfig {
     websiteId,
     apiPath,
     scriptPath,
+    recorderPath,
     proxyPath,
   };
 }
@@ -97,8 +99,8 @@ export function createUmamiRouterClient(proxyPath: string): UmamiRouterClient {
   });
 
   return {
-    async getConfig() {
-      return parseTrackerConfig(await client.query('getConfig'));
+    async getConfig(websiteId?: string) {
+      return parseTrackerConfig(await client.query('getConfig', { websiteId }));
     },
     async getHealth() {
       return parseHealthStatus(await client.query('getHealth'));

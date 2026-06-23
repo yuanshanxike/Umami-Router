@@ -9,9 +9,12 @@ import { createLogger } from "./logger.js";
 const log = createLogger("umami-server");
 
 const SCRIPT_ROUTE = "/umami/script.js";
+const RECORDER_ROUTE = "/umami/recorder.js";
 const SEND_ROUTE = "/umami/api/send";
+const RECORD_ROUTE = "/umami/api/record";
 const TRPC_ROUTE = "/trpc";
-const MAX_BODY_SIZE = 64 * 1024; // 64KB
+const SEND_MAX_BODY_SIZE = 64 * 1024;
+const RECORD_MAX_BODY_SIZE = 1024 * 1024;
 
 // Create tRPC HTTP handler
 const trpcHandler = createHTTPHandler({
@@ -76,18 +79,76 @@ async function handleScriptRequest(
   }
 }
 
-async function handleSendRequest(
+async function handleRecorderRequest(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<boolean> {
   const urlPath = req.url?.split("?")[0] || "";
-  if (urlPath !== SEND_ROUTE) return false;
+  if (urlPath !== RECORDER_ROUTE) return false;
 
   const clientIp = getClientIp(req);
   const origin = req.headers.origin;
   const userAgent = req.headers["user-agent"] || "";
 
-  log("info", "send_request", { clientIp, origin, userAgent });
+  log("info", "recorder_request", { clientIp, origin, userAgent });
+
+  if (!umamiProxyService.checkOrigin(origin)) {
+    log("warn", "recorder_origin_rejected", { clientIp, origin });
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Forbidden origin" }));
+    return true;
+  }
+
+  // Set CORS header if origin present
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+
+  try {
+    const result = await umamiProxyService.proxyRecorderJs();
+    log("info", "recorder_response", {
+      clientIp,
+      status: result.status,
+      bodySize: result.body.length,
+    });
+    res.writeHead(result.status, result.headers);
+    res.end(result.body);
+    return true;
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    log("error", "recorder_error", { clientIp, error: error.message });
+    res.writeHead(502, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": origin || "*",
+      "Vary": "Origin",
+    });
+    res.end(JSON.stringify({ error: "Bad Gateway" }));
+    return true;
+  }
+}
+
+async function handleRecordRequest(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<boolean> {
+  const urlPath = req.url?.split("?")[0] || "";
+  if (urlPath !== RECORD_ROUTE) return false;
+
+  return handleDataRequest(req, res, "record");
+}
+
+async function handleDataRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  type: "send" | "record"
+): Promise<boolean> {
+  const clientIp = getClientIp(req);
+  const origin = req.headers.origin;
+  const userAgent = req.headers["user-agent"] || "";
+  const umamiCache = req.headers["x-umami-cache"]?.toString();
+
+  log("info", `${type}_request`, { clientIp, origin, userAgent, hasCache: !!umamiCache });
 
   // Set CORS headers before validation
   if (origin) {
@@ -99,21 +160,21 @@ async function handleSendRequest(
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    log("info", "send_cors_preflight", { clientIp, origin });
+    log("info", `${type}_cors_preflight`, { clientIp, origin });
     res.writeHead(200);
     res.end();
     return true;
   }
 
   if (!umamiProxyService.checkSendOrigin(origin)) {
-    log("warn", "send_origin_rejected", { clientIp, origin });
+    log("warn", `${type}_origin_rejected`, { clientIp, origin });
     res.writeHead(403, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Forbidden origin" }));
     return true;
   }
 
   if (req.method !== "POST") {
-    log("warn", "send_method_rejected", { clientIp, method: req.method });
+    log("warn", `${type}_method_rejected`, { clientIp, method: req.method });
     res.writeHead(405, { "Content-Type": "application/json", Allow: "POST" });
     res.end(JSON.stringify({ error: "Method Not Allowed" }));
     return true;
@@ -122,11 +183,12 @@ async function handleSendRequest(
   // Collect body with size limit
   const chunks: Buffer[] = [];
   let totalSize = 0;
+  const maxBodySize = type === "record" ? RECORD_MAX_BODY_SIZE : SEND_MAX_BODY_SIZE;
   for await (const chunk of req) {
     const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     totalSize += buf.length;
-    if (totalSize > MAX_BODY_SIZE) {
-      log("warn", "send_body_too_large", { clientIp, size: totalSize });
+    if (totalSize > maxBodySize) {
+      log("warn", `${type}_body_too_large`, { clientIp, size: totalSize, limit: maxBodySize });
       res.writeHead(413, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Payload Too Large" }));
       return true;
@@ -162,21 +224,18 @@ async function handleSendRequest(
     const parsed = JSON.parse(bodyStr);
     websiteId = getWebsiteIdFromParsed(parsed);
   } catch {
-    log("warn", "send_invalid_json", { clientIp, bodyLength: bodyStr.length });
+    log("warn", `${type}_invalid_json`, { clientIp, bodyLength: bodyStr.length });
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Invalid JSON" }));
     return true;
   }
 
   try {
-    const result = await umamiProxyService.proxySendRequest(
-      bodyStr,
-      clientIp,
-      userAgent,
-      origin,
-      websiteId
-    );
-    log("info", "send_response", {
+    const result = type === "send"
+      ? await umamiProxyService.proxySendRequest(bodyStr, clientIp, userAgent, origin, websiteId, umamiCache)
+      : await umamiProxyService.proxyRecordRequest(bodyStr, clientIp, userAgent, origin, websiteId, umamiCache);
+
+    log("info", `${type}_response`, {
       clientIp,
       status: result.status,
       bodySize: result.body.length,
@@ -190,7 +249,7 @@ async function handleSendRequest(
     return true;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
-    log("error", "send_error", { clientIp, error: error.message });
+    log("error", `${type}_error`, { clientIp, error: error.message });
     res.writeHead(502, {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": origin || "*",
@@ -226,9 +285,21 @@ export function createUmamiServer(port?: number) {
       return;
     }
 
+    // Handle /umami/recorder.js
+    if (urlPath === RECORDER_ROUTE) {
+      await handleRecorderRequest(req, res);
+      return;
+    }
+
     // Handle /umami/api/send
     if (urlPath === SEND_ROUTE) {
-      await handleSendRequest(req, res);
+      await handleDataRequest(req, res, "send");
+      return;
+    }
+
+    // Handle /umami/api/record
+    if (urlPath === RECORD_ROUTE) {
+      await handleRecordRequest(req, res);
       return;
     }
 

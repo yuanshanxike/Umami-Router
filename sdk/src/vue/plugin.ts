@@ -1,12 +1,15 @@
 import { ref, type App, type InjectionKey, type Ref } from 'vue';
 import { UmamiTracker } from '../core/UmamiTracker';
 import type { VueTrackerOptions } from '../types';
+import { injectRecorderScript } from './recorder';
 
 export interface UmamiRuntime {
   tracker: UmamiTracker;
   isReady: Ref<boolean>;
   readyPromise: Promise<boolean>;
   options: VueTrackerOptions;
+  scriptPath: Ref<string | null>;
+  recorderPath: Ref<string | null>;
 }
 
 export const UMAMI_RUNTIME_KEY: InjectionKey<UmamiRuntime> = Symbol('umami_runtime');
@@ -14,9 +17,14 @@ export const UMAMI_RUNTIME_KEY: InjectionKey<UmamiRuntime> = Symbol('umami_runti
 export function createUmamiRuntime(options: VueTrackerOptions): UmamiRuntime {
   const tracker = new UmamiTracker(options);
   const isReady = ref(false);
+  const scriptPath = ref<string | null>(null);
+  const recorderPath = ref<string | null>(null);
+
   const readyPromise = tracker.configure().then(
-    () => {
+    (config) => {
       isReady.value = true;
+      scriptPath.value = config.scriptPath;
+      recorderPath.value = config.recorderPath;
       return true;
     },
     () => {
@@ -25,11 +33,17 @@ export function createUmamiRuntime(options: VueTrackerOptions): UmamiRuntime {
     }
   );
 
+  if (options.recorder) {
+    injectRecorderScript(scriptPath, recorderPath, options.websiteId, options.recorder, isReady);
+  }
+
   return {
     tracker,
     isReady,
     readyPromise,
     options,
+    scriptPath,
+    recorderPath,
   };
 }
 

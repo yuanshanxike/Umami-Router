@@ -7,6 +7,7 @@ export interface UmamiConfig {
   websiteId: string;
   apiPath: string;
   scriptPath: string;
+  recorderPath: string;
   proxyPath: string;
 }
 
@@ -31,7 +32,9 @@ export interface SendResult {
 export class UmamiProxyService {
   private upstreamBase!: string;
   private scriptPath = "/script.js";
+  private recorderPath = "/recorder.js";
   private sendPath = "/api/send";
+  private recordPath = "/api/record";
   private timeoutMs!: number;
   private originWhitelist!: Set<string>;
   private rateLimiter!: SlidingWindowRateLimiter;
@@ -62,9 +65,12 @@ export class UmamiProxyService {
       .map((id) => id.trim())
       .filter(Boolean);
 
-    // Custom script path if provided
+    // Custom script paths if provided
     if (process.env.UMAMI_SCRIPT_PATH) {
       this.scriptPath = process.env.UMAMI_SCRIPT_PATH;
+    }
+    if (process.env.UMAMI_RECORDER_PATH) {
+      this.recorderPath = process.env.UMAMI_RECORDER_PATH;
     }
 
     const whitelistEnv = process.env.UMAMI_ALLOWED_ORIGINS || "";
@@ -109,15 +115,18 @@ export class UmamiProxyService {
   getConfig(websiteId?: string): UmamiConfig {
     this.ensureInitialized();
 
-    // Use provided websiteId or fallback to first in list
-    const resolvedWebsiteId =
-      websiteId || this.websiteIds[0] || process.env.UMAMI_WEBSITE_ID || "";
+    // Use provided websiteId if valid, otherwise fallback to first managed ID
+    let resolvedWebsiteId = websiteId;
+    if (!resolvedWebsiteId || !this.isValidWebsite(resolvedWebsiteId)) {
+      resolvedWebsiteId = this.websiteIds[0] || process.env.UMAMI_WEBSITE_ID || "";
+    }
 
     return {
       websiteId: resolvedWebsiteId,
       apiPath: "/umami/api/send",
       scriptPath: "/umami/script.js",
-      proxyPath: "/umami",
+      recorderPath: "/umami/recorder.js",
+      proxyPath: "/trpc", // This should match TRPC_ROUTE in index.ts
     };
   }
 
@@ -164,11 +173,19 @@ export class UmamiProxyService {
   }
 
   async proxyScriptJs(): Promise<ScriptResult> {
+    return this.proxyStaticAsset(this.scriptPath, "script");
+  }
+
+  async proxyRecorderJs(): Promise<ScriptResult> {
+    return this.proxyStaticAsset(this.recorderPath, "recorder");
+  }
+
+  private async proxyStaticAsset(assetPath: string, logLabel: string): Promise<ScriptResult> {
     this.ensureInitialized();
-    const upstreamUrl = `${this.upstreamBase}${this.scriptPath}`;
+    const upstreamUrl = `${this.upstreamBase}${assetPath}`;
 
     log("info", "proxy_request", {
-      type: "script",
+      type: logLabel,
       upstream: upstreamUrl,
     });
 
@@ -199,7 +216,7 @@ export class UmamiProxyService {
       }
 
       log("info", "proxy_success", {
-        type: "script",
+        type: logLabel,
         status: response.status,
         bodySize: body.length,
       });
@@ -208,7 +225,7 @@ export class UmamiProxyService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       log("error", "proxy_error", {
-        type: "script",
+        type: logLabel,
         error: err.message,
         code: (error as NodeJS.ErrnoException).code,
       });
@@ -218,12 +235,37 @@ export class UmamiProxyService {
     }
   }
 
+  async proxyRecordRequest(
+    body: string,
+    clientIp: string,
+    userAgent: string,
+    origin: string | undefined,
+    websiteId?: string,
+    umamiCache?: string
+  ): Promise<SendResult> {
+    return this.proxyDataRequest(body, clientIp, userAgent, origin, "record", this.recordPath, websiteId, umamiCache);
+  }
+
   async proxySendRequest(
     body: string,
     clientIp: string,
     userAgent: string,
     origin: string | undefined,
-    websiteId?: string
+    websiteId?: string,
+    umamiCache?: string
+  ): Promise<SendResult> {
+    return this.proxyDataRequest(body, clientIp, userAgent, origin, "send", this.sendPath, websiteId, umamiCache);
+  }
+
+  private async proxyDataRequest(
+    body: string,
+    clientIp: string,
+    userAgent: string,
+    origin: string | undefined,
+    logLabel: string,
+    assetPath: string,
+    websiteId?: string,
+    umamiCache?: string
   ): Promise<SendResult> {
     this.ensureInitialized();
 
@@ -247,10 +289,10 @@ export class UmamiProxyService {
       };
     }
 
-    const upstreamUrl = `${this.upstreamBase}${this.sendPath}`;
+    const upstreamUrl = `${this.upstreamBase}${assetPath}`;
 
     log("info", "proxy_request", {
-      type: "send",
+      type: logLabel,
       upstream: upstreamUrl,
       clientIp,
       hasOrigin: !!origin,
@@ -261,15 +303,21 @@ export class UmamiProxyService {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "User-Agent": userAgent || "Mozilla/5.0 (compatible; Umami Proxy/1.0)",
+        "X-Forwarded-For": clientIp,
+        "X-Real-IP": clientIp,
+      };
+      // Forward x-umami-cache header if present (required for session identification)
+      if (umamiCache) {
+        headers["x-umami-cache"] = umamiCache;
+      }
+
       const response = await fetch(upstreamUrl, {
         method: "POST",
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": userAgent || "Mozilla/5.0 (compatible; Umami Proxy/1.0)",
-          "X-Forwarded-For": clientIp,
-          "X-Real-IP": clientIp,
-        },
+        headers,
         body,
       });
 
@@ -277,7 +325,7 @@ export class UmamiProxyService {
       const responseBody = Buffer.from(responseBuffer);
 
       log("info", "proxy_success", {
-        type: "send",
+        type: logLabel,
         status: response.status,
         responseSize: responseBody.length,
       });
@@ -286,7 +334,7 @@ export class UmamiProxyService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       log("error", "proxy_error", {
-        type: "send",
+        type: logLabel,
         error: err.message,
         code: (error as NodeJS.ErrnoException).code,
       });

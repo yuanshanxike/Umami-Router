@@ -37,7 +37,7 @@ export class UmamiTracker {
 
   async configure(): Promise<TrackerConfig> {
     this.client = createUmamiRouterClient(this.proxyPath);
-    this.config = await this.client.getConfig();
+    this.config = await this.client.getConfig(this.websiteId);
     this.initialized = true;
     return this.config;
   }

@@ -87,6 +87,11 @@ app.use(createUmamiPlugin({
   proxyPath: '/trpc', // Path to the proxy server
   autoTrack: true,
   useRouter: true,    // Automatically tracks pageviews on route change
+  // Enable Replays feature (optional)
+  recorder: {
+    sampleRate: 0.15, // Recording sample rate (15%)
+    maskLevel: 'moderate' // Privacy masking level
+  }
 }));
 
 app.use(router);
@@ -145,6 +150,11 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
     proxyPath: '/trpc',
     autoTrack: true,
+    // Enable Replays feature (optional)
+    recorder: {
+      sampleRate: 0.15, // Recording sample rate (15%)
+      maskLevel: 'moderate' // Privacy masking level
+    }
   });
 
   // Auto track pageviews on route changes
@@ -227,6 +237,7 @@ The proxy server relies on the following environment variables to route traffic 
 | `UMAMI_RATE_LIMIT_MAX` | Maximum number of requests allowed per window. | `100` |
 | `UMAMI_ALLOWED_ORIGINS` | Comma-separated list of allowed origins (CORS). | Optional (Rejects all cross-origin if empty) |
 | `UMAMI_SCRIPT_PATH` | Custom path to the upstream Umami tracking script. | `/script.js` |
+| `UMAMI_RECORDER_PATH` | Custom path to the upstream Umami recording script (for Replays). | `/recorder.js` |
 | `PORT` | The port the proxy server listens on. | `3000` |
 
 ### Vue Demo Configuration (`demo/vue/`)

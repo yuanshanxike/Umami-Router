@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic';
 import Nav from '@/components/Nav';
+import type { NextjsTrackerOptions } from '@umami_router/sdk';
 
 const TrackerProvider = dynamic(
   () => import('@/components/TrackerProvider').then((mod) => mod.TrackerProvider),
@@ -10,7 +11,11 @@ const TRACKER_OPTIONS = {
   websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID ?? '',
   proxyPath: process.env.NEXT_PUBLIC_UMAMI_PROXY_PATH ?? '/trpc',
   autoTrack: true,
-};
+  recorder: {
+    sampleRate: 1, // Set to 1 (100%) for demo testing purposes
+    maskLevel: 'moderate',
+  },
+} satisfies NextjsTrackerOptions;
 
 export default function AboutPage() {
   return (

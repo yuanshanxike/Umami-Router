@@ -87,6 +87,11 @@ app.use(createUmamiPlugin({
   proxyPath: '/trpc', // プロキシサーバーのパス
   autoTrack: true,
   useRouter: true,    // ルート変更時に自動でページビューをトラッキング
+  // Replays 機能を有効にする (オプション)
+  recorder: {
+    sampleRate: 0.15, // 録画サンプリングレート (15%)
+    maskLevel: 'moderate' // プライバシーマスクレベル
+  }
 }));
 
 app.use(router);
@@ -145,6 +150,11 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
     proxyPath: '/trpc',
     autoTrack: true,
+    // Replays 機能を有効にする (オプション)
+    recorder: {
+      sampleRate: 0.15, // 録画サンプリングレート (15%)
+      maskLevel: 'moderate' // プライバシーマスクレベル
+    }
   });
 
   // ルート変更時に自動でページビューをトラッキング
@@ -226,6 +236,7 @@ export default nextConfig;
 | `UMAMI_RATE_LIMIT_MAX` | 1ウィンドウあたりの最大リクエスト数。 | `100` |
 | `UMAMI_ALLOWED_ORIGINS` | 許可する Origin (CORS) リスト（カンマ区切り）。 | 任意（空の場合はすべてのクロスドメイン要求を拒否） |
 | `UMAMI_SCRIPT_PATH` | 上流の Umami トラッキングスクリプトへのカスタムパス。 | `/script.js` |
+| `UMAMI_RECORDER_PATH` | 上流の Umami 録画スクリプトへのカスタムパス（Replays 機能用）。 | `/recorder.js` |
 | `PORT` | サーバーの待受ポート番号。 | `3000` |
 
 ### Vue デモ設定 (`demo/vue/`)

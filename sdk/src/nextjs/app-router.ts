@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { UmamiTracker } from '../core/UmamiTracker';
 import type { NextjsTrackerOptions } from '../types';
+import { useInjectRecorderScript } from './recorder';
 
 interface UmamiContextValue {
   tracker: UmamiTracker | null;
@@ -52,6 +53,8 @@ function useSharedTracker(): UmamiTracker | null {
 export function useUmami(options: NextjsTrackerOptions) {
   const [tracker, setTracker] = useState<UmamiTracker | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [scriptPath, setScriptPath] = useState<string | null>(null);
+  const [recorderPath, setRecorderPath] = useState<string | null>(null);
 
   useEffect(() => {
     const umamiTracker = new UmamiTracker(options);
@@ -60,13 +63,15 @@ export function useUmami(options: NextjsTrackerOptions) {
     let cancelled = false;
 
     void umamiTracker.configure().then(
-      () => {
+      (config) => {
         if (cancelled) {
           return;
         }
 
         setTracker(umamiTracker);
         setIsReady(true);
+        setScriptPath(config.scriptPath);
+        setRecorderPath(config.recorderPath);
         setSharedTracker(umamiTracker);
       },
       () => {
@@ -80,6 +85,8 @@ export function useUmami(options: NextjsTrackerOptions) {
       cancelled = true;
     };
   }, [options.websiteId, options.proxyPath, options.autoTrack]);
+
+  useInjectRecorderScript(scriptPath, recorderPath, options.websiteId, options.recorder, isReady);
 
   return {
     tracker,

@@ -87,6 +87,11 @@ app.use(createUmamiPlugin({
   proxyPath: '/trpc', // 代理服务器路径
   autoTrack: true,
   useRouter: true,    // 监听路由变化自动上报 pageview
+  // 启用 Replays 功能（可选）
+  recorder: {
+    sampleRate: 0.15, // 录制采样率（15%）
+    maskLevel: 'moderate' // 隐私遮罩级别
+  }
 }));
 
 app.use(router);
@@ -145,6 +150,11 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
     proxyPath: '/trpc',
     autoTrack: true,
+    // 启用 Replays 功能（可选）
+    recorder: {
+      sampleRate: 0.15, // 录制采样率（15%）
+      maskLevel: 'moderate' // 隐私遮罩级别
+    }
   });
 
   // 监听路由变化自动上报 pageview
@@ -226,6 +236,7 @@ export default nextConfig;
 | `UMAMI_RATE_LIMIT_MAX` | 每个限流窗口内允许的最大请求数。 | `100` |
 | `UMAMI_ALLOWED_ORIGINS` | 允许跨域的 Origin 列表（多个用逗号分隔）。 | 选填（为空则拒绝所有跨域请求） |
 | `UMAMI_SCRIPT_PATH` | 上游 Umami 脚本的具体路径。 | `/script.js` |
+| `UMAMI_RECORDER_PATH` | 上游 Umami 录制脚本的具体路径（用于 Replays 功能）。 | `/recorder.js` |
 | `PORT` | 代理服务器的监听端口。 | `3000` |
 
 ### Vue 演示项目配置 (`demo/vue/`)
