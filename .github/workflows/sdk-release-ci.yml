@@ -33,6 +33,27 @@ jobs:
         working-directory: sdk
         run: bun install --frozen-lockfile
 
+      - name: Sync SDK version from tag
+        working-directory: sdk
+        shell: bash
+        run: |
+          tag_name="${GITHUB_REF_NAME}"
+          sdk_version="${tag_name#v}"
+
+          if [[ "$tag_name" == release* ]]; then
+            sdk_version="${tag_name#release}"
+            sdk_version="${sdk_version#-}"
+            sdk_version="${sdk_version#/}"
+            sdk_version="${sdk_version#v}"
+          fi
+
+          if [[ ! "$sdk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?(\+[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Invalid SDK version derived from tag: $tag_name"
+            exit 1
+          fi
+
+          bun pm pkg set "version=$sdk_version"
+
       - name: Lint SDK
         working-directory: sdk
         run: bun run lint
