@@ -1,6 +1,6 @@
 {
   "name": "@umami_router/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,6 +20,7 @@
     "start": "bun run start:bun",
     "start:node": "node dist/index.js",
     "start:bun": "bun dist/index.js",
+    "test": "bun test",
     "typecheck": "bun run typecheck:bun",
     "typecheck:node": "tsc --noEmit",
     "typecheck:bun": "bunx tsc --noEmit"

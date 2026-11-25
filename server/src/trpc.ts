@@ -33,7 +33,7 @@ export const umamiRouter = t.router({
         managedWebsites: z.array(z.string()),
       })
     )
-    .query(() => {
+    .query(async () => {
       return umamiProxyService.getHealth();
     }),
 });

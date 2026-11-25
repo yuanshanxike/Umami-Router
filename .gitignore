@@ -11,6 +11,10 @@ demo/**/vite.config.d.ts
 # Build outputs
 sdk/dist/**
 server/dist/**
+*.tgz
+
+# Playwright CLI artifacts
+.playwright-cli/
 
 # macOS
 .DS_Store

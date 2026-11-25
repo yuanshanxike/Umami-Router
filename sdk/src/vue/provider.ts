@@ -1,7 +1,7 @@
 import { defineComponent, provide } from 'vue';
 import { UMAMI_RUNTIME_KEY, createUmamiRuntime } from './plugin';
 import type { PropType } from 'vue';
-import type { RecorderOptions } from '../types';
+import type { ErrorTrackingOptions, RecorderOptions } from '../types';
 
 export const UmamiProvider = defineComponent({
   name: 'UmamiProvider',
@@ -12,7 +12,7 @@ export const UmamiProvider = defineComponent({
     },
     proxyPath: {
       type: String,
-      default: '/api/umami',
+      default: '/trpc',
     },
     autoTrack: {
       type: Boolean,
@@ -22,6 +22,14 @@ export const UmamiProvider = defineComponent({
       type: [Boolean, Object] as PropType<boolean | RecorderOptions>,
       default: false,
     },
+    errors: {
+      type: [Boolean, Object] as PropType<boolean | ErrorTrackingOptions>,
+      default: false,
+    },
+    performance: {
+      type: Boolean,
+      default: false,
+    },
   },
   setup(props, { slots }) {
     const runtime = createUmamiRuntime({
@@ -29,6 +37,8 @@ export const UmamiProvider = defineComponent({
       proxyPath: props.proxyPath,
       autoTrack: props.autoTrack,
       recorder: props.recorder,
+      errors: props.errors,
+      performance: props.performance,
     });
 
     provide(UMAMI_RUNTIME_KEY, runtime);

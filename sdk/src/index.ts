@@ -2,10 +2,18 @@
 export { UmamiTracker } from './core/UmamiTracker';
 export { RetryQueue } from './core/RetryQueue';
 export { createUmamiRouterClient } from './core/trpc';
+export { mountUmamiScripts, initBrowserTracker } from './core/recorder';
+export type { MountUmamiScriptsOptions } from './core/recorder';
 
 // Types
 export type {
   TrackerConfig,
+  RecorderOptions,
+  ErrorTrackingOptions,
+  ScriptFeatureOptions,
+  CaptureExceptionContext,
+  BrowserTrackerOptions,
+  BrowserTrackerHandle,
   HealthStatus,
   TrackOptions,
   PageviewOptions,

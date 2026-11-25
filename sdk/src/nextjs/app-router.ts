@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { UmamiTracker } from '../core/UmamiTracker';
-import type { NextjsTrackerOptions } from '../types';
+import type { CaptureExceptionContext, NextjsTrackerOptions } from '../types';
 import { useInjectRecorderScript } from './recorder';
 
 interface UmamiContextValue {
@@ -56,8 +56,14 @@ export function useUmami(options: NextjsTrackerOptions) {
   const [scriptPath, setScriptPath] = useState<string | null>(null);
   const [recorderPath, setRecorderPath] = useState<string | null>(null);
 
+  const hasRecorder = Boolean(options.recorder);
+  const autoTrack = options.autoTrack !== false;
+
   useEffect(() => {
     const umamiTracker = new UmamiTracker(options);
+    if (hasRecorder && autoTrack) {
+      umamiTracker.markInitialPageviewManagedByScript();
+    }
     setSharedTracker(null);
 
     let cancelled = false;
@@ -84,9 +90,32 @@ export function useUmami(options: NextjsTrackerOptions) {
     return () => {
       cancelled = true;
     };
-  }, [options.websiteId, options.proxyPath, options.autoTrack]);
+  }, [options.websiteId, options.proxyPath, options.autoTrack, hasRecorder, autoTrack]);
 
-  useInjectRecorderScript(scriptPath, recorderPath, options.websiteId, options.recorder, isReady);
+  useInjectRecorderScript(
+    scriptPath,
+    recorderPath,
+    options.websiteId,
+    {
+      recorder: options.recorder,
+      errors: options.errors,
+      performance: options.performance,
+      triggerInitialTrack: autoTrack,
+      onScriptError: () => {
+        if (
+          autoTrack &&
+          tracker &&
+          typeof window !== 'undefined' &&
+          typeof document !== 'undefined'
+        ) {
+          void tracker
+            .pageview(window.location.href, document.referrer)
+            .catch(() => {});
+        }
+      },
+    },
+    isReady
+  );
 
   return {
     tracker,
@@ -97,6 +126,15 @@ export function useUmami(options: NextjsTrackerOptions) {
       },
       event: async (name: string, data?: Record<string, unknown>) => {
         await tracker?.event(name, data);
+      },
+      identify: async (
+        idOrData: string | Record<string, unknown>,
+        data?: Record<string, unknown>
+      ) => {
+        await tracker?.identify(idOrData, data);
+      },
+      captureException: async (error: unknown, context?: CaptureExceptionContext) => {
+        await tracker?.captureException(error, context);
       },
     },
     isAutoTrackEnabled: () => tracker?.isAutoTrackEnabled() ?? false,
@@ -137,6 +175,10 @@ export function usePageviewTracking(getPath: () => string) {
     }
 
     if (previousPathRef.current !== currentPath) {
+      if (previousPathRef.current === null && tracker.consumeInitialPageviewSkip()) {
+        previousPathRef.current = currentPath;
+        return;
+      }
       void tracker.pageview(currentPath, previousPathRef.current ?? undefined);
       previousPathRef.current = currentPath;
     }

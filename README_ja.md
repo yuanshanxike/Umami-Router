@@ -2,74 +2,46 @@
 
 # Umami Router
 
-本プロジェクトは、[Umami](https://github.com/umami-software/umami) をベースに二次開発されたものです。
+本プロジェクトは、[Umami](https://github.com/umami-software/umami)（`v3.5.0+` 対応）をベースに二次開発されたものです。
 
 ## 概要
 
-**Umami Router** は、フロントエンドアプリケーションが Umami アナリティクスと統合するためのプロキシサーバーおよびクライアント SDK です。
+**Umami Router** は、フロントエンドアプリケーションが Umami アナリティクスと安全かつ簡単に統合するためのプロキシサーバーおよびクライアント SDK です。
 
-本プロジェクトの**主な目的**は、様々なウェブサイトからのトラッキングデータを、指定した単一のサーバーに簡単にルーティング（転送）することです。
+本プロジェクトの**主な目的**は、様々なウェブサイトからのトラッキングデータを、指定した単一のサーバーに一括ルーティング（転送）することです。
 
 ### 典型的な利用シーン
 
-個人利用の場合、クラウドサーバー上に展開されたWebページのトラッキングを極めて安全かつ簡単に行うことができます。クラウドサーバー上にこの `router server` を展開し、各フロントエンドからのトラッキングデータを受信させます。そして、同じ **Tailscale** イントラネット内にあるローカルサーバーの Umami データベースへデータを一括転送します。これにより、Umami データベースを直接公開インターネットに晒すことなく、ローカル環境で安全かつ簡単にWebページのデータ動向を確認できます。
+個人利用の場合、クラウドサーバー上に展開された Web ページのトラッキングを安全かつ簡単に行えます。クラウドサーバー上にこの `router server` を配置し、各フロントエンドからのトラッキングデータを受信し、同じ **Tailscale** イントラネット内にあるローカルサーバーの Umami データベースへデータを転送します。これにより、Umami データベースを公開インターネットに晒すことなく、ローカル環境で安全に分析できます。
 
 ## プロジェクト構造
 
 本プロジェクトは **Bun** を使用したモノレポ構造を採用しています：
 
-- **`server/`**: Node.js/Bun ベースのプロキシサーバー (`@umami_router/server`) です。Umami スクリプトとトラッキング要求のプロキシとして機能し、CORS チェック、Origin 検証、要求のロギング、およびレート制限（Rate-Limiting）を処理します。
-- **`sdk/`**: フロントエンド用の TypeScript クライアント SDK (`@umami_router/sdk`) です。コアトラッキング機能に加え、**Vue 3** および **Next.js 14+** 向けの専用インテグレーションを提供します。
-- **`demo/`**: SDK を使用したデモアプリケーション。
-  - `demo/vue/`: Vue 3 + Vite アプリケーションのデモ。
-  - `demo/nextjs/`: Next.js 14 (App Router) アプリケーションのデモ。
+- **`server/`**: Node.js/Bun ベースのプロキシサーバー (`@umami_router/server`)。Umami スクリプト、レコーダー設定、イベント、エラートラッキング、パフォーマンス計測、Session Replay/Heatmap データをプロキシし、CORS チェック、Origin 検証、`x-umami-*` ヘッダー転送、ロギング、レート制限（`Retry-After`）、および `/api/heartbeat` による実疎通ヘルスチェックを行います。
+- **`sdk/`**: フロントエンド用の TypeScript クライアント SDK (`@umami_router/sdk`)。フレームワーク非依存のコア (`@umami_router/sdk/core`)、静的 HTML 向け IIFE バンドル (`@umami_router/sdk/browser`)、および **Vue 3** (`@umami_router/sdk/vue`)・**Next.js 14+** (`@umami_router/sdk`) 向け統合を提供します。
+- **`demo/`**: SDK を使用したデモアプリケーション（`demo/vue/` と `demo/nextjs/`）。
 
 ## AI Agent Skill 統合
 
-本プロジェクトには **`@umami_router/sdk`** の統合時にコンテキストガイドを提供する **AI Agent skill**（`skills/umami-sdk/`）が含まれています。Claude Code や Gemini CLI のような Agent CLI ツールと互換性があります。
-
-### Skill の機能
-
-以下の場面で skill が自動的に有効になります：
-- SDK と Vue 3 または Next.js の統合
-- ページビューとイベントのトラッキング実装
-- Tracker オプションの設定
-- `createUmamiPlugin`、`useTracker`、`usePageTrack`、`useEventTrack` の使用（Vue）
-- `useUmami`、`usePageviewTracking`、`useEventTracking` （および Next.js Pages Router 向けのバリアント）の使用
-- 型定義（`TrackerConfig`、`HealthStatus`、`TrackOptions`）
-- Umami プロキシサーバーのセットアップ
-- Tracker の初期化やトラッキング失敗のトラブルシューティング
+本プロジェクトには **`@umami_router/sdk`** の統合時にコンテキストガイドを提供する **AI Agent skill**（`skills/umami-sdk/`）が含まれています。
 
 ### インストール方法
 
 **1. クイックインストール（推奨）**
-
-以下のコマンドで簡単にインストールできます：
-
 ```bash
 npx skills install yuanshanxike/Umami-Router
 ```
 
 **2. 手動インストール**
-
-skill フォルダを Agent ツールの skills ディレクトリ（例：`~/.claude/skills/` または `~/.gemini/skills/`）にコピーします：
-
-```bash
-# skill の場所：
-skills/umami-sdk/
-```
-
-### 使用例
-
-この skill により、AI Agent は以下のようなタスクをサポートできます：
-
-- Vue コンポーネントでカスタムイベントをトラッキング
-- Next.js App Router の自動トラッキングを設定
-- カスタムプロキシパスで tracker をセットアップ
-- ルート変更時のページビュートラッキングを実装
-- Tracker の初期化をデバッグ
+`skills/umami-sdk/` を Agent ツールの skills ディレクトリ（例：`~/.claude/skills/` または `~/.gemini/skills/`）にコピーします。
 
 ## 利用方法 / 組み込み
+
+### Umami v3.5.0+ に関する重要な注意点
+
+- **Session Replay & Heatmaps 設定**: Umami `v3.5.0` 以降、`recorder.js` は `GET /umami/api/websites/:id/recorder` からサーバー側の設定を動的に取得します。クライアント側の `RecorderOptions` 属性（`sampleRate`、`maskLevel`、`maxDuration`、`blockSelector`）は Umami `v3.5+` では無視され、Umami `<= 3.4` 互換のためにのみ残されています。サンプリングやマスク設定は Umami 管理画面で行い、機密要素には `data-umami-replay-block` 属性を付与してください。
+- **CSP ポリシー**: Session Replay は Blob Web Worker を使用するため、厳格な CSP を設定している場合は `worker-src 'self' blob:;` を許可する必要があります。
 
 ### Vue 3
 
@@ -84,59 +56,47 @@ const app = createApp(App);
 
 app.use(createUmamiPlugin({
   websiteId: import.meta.env.VITE_UMAMI_WEBSITE_ID,
-  proxyPath: '/trpc', // プロキシサーバーのパス
+  proxyPath: '/trpc',
   autoTrack: true,
-  useRouter: true,    // ルート変更時に自動でページビューをトラッキング
-  // Replays 機能を有効にする (オプション)
-  recorder: {
-    sampleRate: 0.15, // 録画サンプリングレート (15%)
-    maskLevel: 'moderate' // プライバシーマスクレベル
-  }
+  useRouter: true,
+  recorder: true,     // Replays / Heatmaps を有効化（v3.5+ ではサーバー側設定を使用）
+  errors: true,       // 任意：Umami v3.5.0+ エラートラッキング
+  performance: true,  // 任意：Core Web Vitals 計測
 }));
 
 app.use(router);
 app.mount('#app');
 ```
 
-**2. コンポーネントでのカスタムイベントのトラッキング**
-```vue
-<script setup lang="ts">
-import { useEventTrack } from '@umami_router/sdk/vue';
+**2. 開発用プロキシ (`vite.config.ts`) と本番 Nginx 設定**
+本番環境で Nginx を使用する場合は、静的 `.js` キャッシュの正規表現に `/umami/script.js` や `/umami/recorder.js` が奪われないよう **`location ^~`** を使用してください：
 
-const { trackEvent } = useEventTrack();
+```nginx
+resolver 8.8.8.8 1.1.1.1 valid=300s ipv6=off;
 
-const handleClick = () => {
-  trackEvent('button_click', { buttonName: 'submit' });
-};
-</script>
+location ^~ /trpc/ {
+    set $umami_upstream "https://your-router-server.example.com";
+    proxy_pass $umami_upstream;
+    proxy_ssl_server_name on;
+    proxy_ssl_name your-router-server.example.com;
+    proxy_set_header Host your-router-server.example.com;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location ^~ /umami/ {
+    set $umami_upstream "https://your-router-server.example.com";
+    proxy_pass $umami_upstream;
+    proxy_ssl_server_name on;
+    proxy_ssl_name your-router-server.example.com;
+    proxy_set_header Host your-router-server.example.com;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
 ```
 
-**3. 開発用プロキシの設定 (`vite.config.ts`)**
-ローカル開発時のCORSの問題を回避し、同一生成元（same-origin）の要求として処理するために、Viteのプロキシを設定します。
+### Next.js 14+ (App Router)
 
-**注意：** このプロキシ設定はローカル開発 (`vite dev`) 時のみ有効です。本番環境では、Webサーバー（Nginxの `location` ブロックや、Vercel、Cloudflareなどのルーティング機能）で `/trpc` と `/umami` をプロキシサーバーへ明示的にリバースプロキシ設定する必要があります。
-
-```ts
-import { defineConfig, loadEnv } from 'vite';
-
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const umamiServerOrigin = env.VITE_UMAMI_SERVER_ORIGIN || 'http://localhost:3000';
-
-  return {
-    server: {
-      proxy: {
-        '/trpc': { target: umamiServerOrigin, changeOrigin: true },
-        '/umami': { target: umamiServerOrigin, changeOrigin: true },
-      },
-    },
-  };
-});
-```
-
-### Next.js 14 (App Router)
-
-**1. Providerコンポーネントの作成 (`components/TrackerProvider.tsx`)**
 ```tsx
 'use client';
 
@@ -150,142 +110,114 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID!,
     proxyPath: '/trpc',
     autoTrack: true,
-    // Replays 機能を有効にする (オプション)
-    recorder: {
-      sampleRate: 0.15, // 録画サンプリングレート (15%)
-      maskLevel: 'moderate' // プライバシーマスクレベル
-    }
+    recorder: true,
+    errors: true,
   });
 
-  // ルート変更時に自動でページビューをトラッキング
   usePageviewTracking(() => pathname);
-  // 子コンポーネントにイベントトラッキングを公開
   useEventTracking();
 
   return <>{children}</>;
 }
 ```
 
-**2. アプリケーションのラップ (`app/layout.tsx`)**
-```tsx
-import { TrackerProvider } from '@/components/TrackerProvider';
+### Vanilla TypeScript / 静的 HTML サイト
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <TrackerProvider>
-          {children}
-        </TrackerProvider>
-      </body>
-    </html>
-  );
-}
+**1. Vanilla TS（`@umami_router/sdk/core`）**
+```typescript
+import { initBrowserTracker } from '@umami_router/sdk/core';
+
+export const analytics = initBrowserTracker({
+  websiteId: import.meta.env.VITE_UMAMI_WEBSITE_ID,
+  proxyPath: '/trpc',
+  autoTrack: true,
+  recorder: true,
+  errors: true,
+});
 ```
 
-**3. クライアントコンポーネントでのカスタムイベントのトラッキング**
-```tsx
-'use client';
-import { useEventTracking } from "@umami_router/sdk";
-
-export default function TrackedButton() {
-  const { trackEvent } = useEventTracking();
-
-  return (
-    <button onClick={() => trackEvent("custom_click", { foo: "bar" })}>
-      Track
-    </button>
-  );
-}
+**2. 静的 HTML（`@umami_router/sdk/browser` -> `dist/browser.global.js`）**
+```html
+<script
+  src="/umami-tracker.js"
+  data-umami-router-website-id="your-website-id"
+  data-umami-router-errors="true"
+  defer
+></script>
 ```
+`window.__umamiTrack(name, data)` と `window.umamiRouter` が利用可能になります。
 
-**4. APIリライトの設定 (`next.config.mjs`)**
-CORSの問題を回避し、すべてのトラッキング要求を同一生成元（same-origin）として安全にプロキシサーバーへルーティングするために、Next.jsのリライトを設定します。
+## サーバールート (`@umami_router/server`)
 
-**注意：** この設定は開発環境と本番環境 (`next start`) の両方で機能します。ただし、静的HTMLエクスポート (`output: 'export'`) を使用している場合はこのリライト機能はサポートされないため、デプロイ先のプラットフォーム（Nginx、Vercelなど）で直接リバースプロキシを設定する必要があります。
-
-```javascript
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  async rewrites() {
-    const target = process.env.UMAMI_SERVER_ORIGIN ?? 'http://localhost:3000';
-    return [
-      { source: '/trpc/:path*', destination: `${target}/trpc/:path*` },
-      { source: '/umami/:path*', destination: `${target}/umami/:path*` },
-    ];
-  },
-};
-export default nextConfig;
-```
+| メソッドとパス | 説明 |
+| --- | --- |
+| `GET /umami/script.js` | Umami トラッキングスクリプトのプロキシ |
+| `GET /umami/recorder.js` | Session Replay / Heatmap 用スクリプトのプロキシ |
+| `GET /umami/api/websites/:id/recorder` | Umami `v3.5.0+` サーバー側レコーダー設定のプロキシ |
+| `POST /umami/api/send` | ページビュー、イベント、identify、エラー、パフォーマンス送信（最大 64 KB） |
+| `POST /umami/api/record` | Session Replay および Heatmap データ送信（最大 1 MB） |
+| `GET / POST /trpc/*` | tRPC API（`getConfig`、`/api/heartbeat` による実疎通確認付き `getHealth`） |
 
 ## 環境変数
 
 ### サーバー設定 (`server/`)
 
-プロキシサーバーを安全に稼働させるため、以下の環境変数を設定します：
-
-**CORSに関する重要な注意事項：** セキュリティ上の理由から、Originホワイトリスト (`UMAMI_ALLOWED_ORIGINS`) が設定されていない場合、デフォルトで**すべてのクロスドメイン要求は拒否され**、`403 Forbidden` エラーが返されます。トラッキングデータを受信する予定のドメインを、明示的にこのホワイトリストに設定する必要があります。
+**CORS に関する重要な注意事項：** `UMAMI_ALLOWED_ORIGINS` が未設定の場合、デフォルトで**すべてのクロスドメイン要求および `/umami/api/send` / `/umami/api/record` 要求が拒否**され `403 Forbidden` が返されます。
 
 | 変数名 | 説明 | デフォルト / 必須 |
 | --- | --- | --- |
-| `UMAMI_UPSTREAM_HOST` | 上流の Umami サーバーホスト（例: `localhost:3000` や Tailscale IP）。 | **必須** |
-| `UMAMI_WEBSITE_IDS` | トラッキングを許可するウェブサイトID（カンマ区切り）。 | 任意 |
+| `UMAMI_UPSTREAM_HOST` | 上流 Umami サーバーホスト（例: `localhost:3000` や Tailscale IP）。 | **必須** |
+| `UMAMI_WEBSITE_IDS` | 許可するウェブサイトID（カンマ区切り）。 | 任意 |
 | `UMAMI_WEBSITE_ID` | フォールバック用の単一ウェブサイトID。 | 任意 |
+| `UMAMI_ALLOWED_ORIGINS` | 許可する Origin リスト（カンマ区切り）。 | 任意（空の場合は拒否） |
 | `UMAMI_TIMEOUT_MS` | プロキシリクエストのタイムアウト（ミリ秒）。 | `5000` |
-| `UMAMI_RATE_LIMIT_WINDOW_MS`| レート制限のウィンドウ時間（ミリ秒）。 | `60000` |
+| `UMAMI_HEALTH_CACHE_TTL_MS` | `getHealth()` の `/api/heartbeat` キャッシュ TTL（ミリ秒、`0` で無効）。 | `15000` |
+| `UMAMI_RATE_LIMIT_WINDOW_MS` | レート制限のウィンドウ時間（ミリ秒）。 | `60000` |
 | `UMAMI_RATE_LIMIT_MAX` | 1ウィンドウあたりの最大リクエスト数。 | `100` |
-| `UMAMI_ALLOWED_ORIGINS` | 許可する Origin (CORS) リスト（カンマ区切り）。 | 任意（空の場合はすべてのクロスドメイン要求を拒否） |
-| `UMAMI_SCRIPT_PATH` | 上流の Umami トラッキングスクリプトへのカスタムパス。 | `/script.js` |
-| `UMAMI_RECORDER_PATH` | 上流の Umami 録画スクリプトへのカスタムパス（Replays 機能用）。 | `/recorder.js` |
+| `UMAMI_SCRIPT_PATH` | 上流 Umami トラッキングスクリプトパス。 | `/script.js` |
+| `UMAMI_RECORDER_PATH` | 上流 Umami 録画スクリプトパス。 | `/recorder.js` |
 | `PORT` | サーバーの待受ポート番号。 | `3000` |
 
 ### Vue デモ設定 (`demo/vue/`)
 
-`demo/vue` ディレクトリ内の `.env` ファイルに設定します。
-
 | 変数名 | 説明 |
 | --- | --- |
 | `VITE_UMAMI_WEBSITE_ID` | Umami ダッシュボードで登録された Website ID。 |
-| `VITE_UMAMI_PROXY_PATH` | プロキシサーバーに到達するためのパス（デフォルト: `/trpc`）。 |
-| `VITE_UMAMI_SERVER_ORIGIN` | ローカル開発用プロキシ(`vite.config.ts`) に使用するサーバーオリジン（例: `http://localhost:3000`）。 |
+| `VITE_UMAMI_PROXY_PATH` | プロキシサーバーパス（デフォルト: `/trpc`）。 |
+| `VITE_UMAMI_SERVER_ORIGIN` | ローカル開発プロキシ (`vite.config.ts`) 用サーバーオリジン。 |
 
 ### Next.js デモ設定 (`demo/nextjs/`)
 
-`demo/nextjs` ディレクトリ内の `.env.local` ファイルに設定します。
-
 | 変数名 | 説明 |
 | --- | --- |
-| `NEXT_PUBLIC_UMAMI_WEBSITE_ID`| Umami ダッシュボードで登録された Website ID。 |
-| `NEXT_PUBLIC_UMAMI_PROXY_PATH`| プロキシサーバーに到達するためのパス（デフォルト: `/trpc`）。 |
-| `UMAMI_SERVER_ORIGIN` | ルーティング (`next.config.mjs`) に使用するサーバーオリジン（例: `http://localhost:3000`）。 |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | Umami ダッシュボードで登録された Website ID。 |
+| `NEXT_PUBLIC_UMAMI_PROXY_PATH` | プロキシサーバーパス（デフォルト: `/trpc`）。 |
+| `UMAMI_SERVER_ORIGIN` | ルーティング (`next.config.mjs`) 用サーバーオリジン。 |
 
 ## 使い方
 
-本プロジェクトは主なパッケージマネージャーおよびタスクランナーとして **Bun** (`bun@1.3.9+`) を使用します。
+本プロジェクトは **Bun** (`bun@1.3.9+`) を使用します。
 
-**1. 依存関係のインストール**
+**1. 依存関係のインストールとテスト**
 ```bash
-# ルートディレクトリで実行
-bun install
+cd server && bun install && bun run typecheck && bun test
+cd ../sdk && bun install && bun run typecheck && bun test && bun run build
 ```
 
 **2. サーバーの起動**
 ```bash
 cd server
-# 環境変数を設定してください
-# cp .env.example .env 
+cp .env.example .env
 bun run dev
 ```
 
 **3. デモの起動**
 ```bash
 # Next.js デモの場合
-cd demo/nextjs
-bun run dev
+cd demo/nextjs && bun run dev
 
 # Vue デモの場合
-cd demo/vue
-bun run dev
+cd demo/vue && bun run dev
 ```
 
 ## ライセンス

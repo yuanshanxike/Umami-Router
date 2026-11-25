@@ -26,7 +26,27 @@ export interface ScriptResult {
 
 export interface SendResult {
   status: number;
+  headers?: Record<string, string>;
   body: Buffer;
+}
+
+export interface DataForwardHeaders {
+  umamiCache?: string;
+  umamiWebsiteId?: string;
+  umamiHostname?: string;
+}
+
+interface UpstreamHealthStatus {
+  upstreamReachable: boolean;
+  upstreamLatencyMs: number | null;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const code = Reflect.get(error, "code");
+  return typeof code === "string" ? code : undefined;
 }
 
 export class UmamiProxyService {
@@ -36,6 +56,10 @@ export class UmamiProxyService {
   private sendPath = "/api/send";
   private recordPath = "/api/record";
   private timeoutMs!: number;
+  private rateLimitWindowMs = 60000;
+  private healthCacheTtlMs = 15000;
+  private healthCache: (UpstreamHealthStatus & { checkedAt: number }) | null = null;
+  private inflightHealthCheck: Promise<UpstreamHealthStatus> | null = null;
   private originWhitelist!: Set<string>;
   private rateLimiter!: SlidingWindowRateLimiter;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -55,7 +79,15 @@ export class UmamiProxyService {
     }
 
     this.upstreamBase = `http://${upstreamHost}`;
-    this.timeoutMs = Number.parseInt(process.env.UMAMI_TIMEOUT_MS || "5000", 10);
+    const parsedTimeout = Number.parseInt(process.env.UMAMI_TIMEOUT_MS || "5000", 10);
+    this.timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 5000;
+
+    const parsedHealthTtl = Number.parseInt(
+      process.env.UMAMI_HEALTH_CACHE_TTL_MS ?? "15000",
+      10
+    );
+    this.healthCacheTtlMs =
+      Number.isFinite(parsedHealthTtl) && parsedHealthTtl >= 0 ? parsedHealthTtl : 15000;
 
     // Support multiple website IDs (comma-separated)
     const websiteIdsEnv =
@@ -66,26 +98,33 @@ export class UmamiProxyService {
       .filter(Boolean);
 
     // Custom script paths if provided
-    if (process.env.UMAMI_SCRIPT_PATH) {
-      this.scriptPath = process.env.UMAMI_SCRIPT_PATH;
-    }
-    if (process.env.UMAMI_RECORDER_PATH) {
-      this.recorderPath = process.env.UMAMI_RECORDER_PATH;
-    }
+    this.scriptPath = process.env.UMAMI_SCRIPT_PATH || "/script.js";
+    this.recorderPath = process.env.UMAMI_RECORDER_PATH || "/recorder.js";
 
     const whitelistEnv = process.env.UMAMI_ALLOWED_ORIGINS || "";
     this.originWhitelist = new Set(
       whitelistEnv.split(",").map((o) => o.trim()).filter(Boolean)
     );
 
-    const rateLimitWindow = Number.parseInt(
+    const parsedRateLimitWindow = Number.parseInt(
       process.env.UMAMI_RATE_LIMIT_WINDOW_MS || "60000",
       10
     );
-    const rateLimitMax = Number.parseInt(
+    const rateLimitWindow =
+      Number.isFinite(parsedRateLimitWindow) && parsedRateLimitWindow > 0
+        ? parsedRateLimitWindow
+        : 60000;
+    this.rateLimitWindowMs = rateLimitWindow;
+
+    const parsedRateLimitMax = Number.parseInt(
       process.env.UMAMI_RATE_LIMIT_MAX || "100",
       10
     );
+    const rateLimitMax =
+      Number.isFinite(parsedRateLimitMax) && parsedRateLimitMax > 0
+        ? parsedRateLimitMax
+        : 100;
+
     this.rateLimiter = new SlidingWindowRateLimiter({
       windowMs: rateLimitWindow,
       maxRequests: rateLimitMax,
@@ -101,6 +140,7 @@ export class UmamiProxyService {
       upstreamBase: this.upstreamBase,
       websiteIds: this.websiteIds,
       timeoutMs: this.timeoutMs,
+      healthCacheTtlMs: this.healthCacheTtlMs,
     });
   }
 
@@ -109,6 +149,8 @@ export class UmamiProxyService {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    this.healthCache = null;
+    this.inflightHealthCheck = null;
     this._initialized = false;
   }
 
@@ -130,14 +172,82 @@ export class UmamiProxyService {
     };
   }
 
-  getHealth(): ProxyHealth {
+  async getHealth(): Promise<ProxyHealth> {
     this.ensureInitialized();
+    const upstreamStatus = await this.checkUpstreamHealth();
     return {
-      upstreamReachable: true,
-      upstreamLatencyMs: null,
+      upstreamReachable: upstreamStatus.upstreamReachable,
+      upstreamLatencyMs: upstreamStatus.upstreamLatencyMs,
       rateLimitRemaining: this.rateLimiter.getGlobalRemaining(),
       managedWebsites: this.websiteIds,
     };
+  }
+
+  private async checkUpstreamHealth(): Promise<UpstreamHealthStatus> {
+    if (
+      this.healthCacheTtlMs > 0 &&
+      this.healthCache &&
+      Date.now() - this.healthCache.checkedAt < this.healthCacheTtlMs
+    ) {
+      return {
+        upstreamReachable: this.healthCache.upstreamReachable,
+        upstreamLatencyMs: this.healthCache.upstreamLatencyMs,
+      };
+    }
+
+    if (this.inflightHealthCheck) {
+      return this.inflightHealthCheck;
+    }
+
+    this.inflightHealthCheck = this.probeUpstreamHeartbeat().finally(() => {
+      this.inflightHealthCheck = null;
+    });
+
+    return this.inflightHealthCheck;
+  }
+
+  private async probeUpstreamHeartbeat(): Promise<UpstreamHealthStatus> {
+    const heartbeatUrl = `${this.upstreamBase}/api/heartbeat`;
+    const probeTimeoutMs = Math.min(this.timeoutMs, 3000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), probeTimeoutMs);
+    const startedAt = performance.now();
+
+    try {
+      const response = await fetch(heartbeatUrl, {
+        method: "GET",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Umami Proxy Health/1.0)",
+        },
+      });
+      const latencyMs = Math.round(performance.now() - startedAt);
+      const status: UpstreamHealthStatus = {
+        upstreamReachable: response.ok,
+        upstreamLatencyMs: latencyMs,
+      };
+      if (this.healthCacheTtlMs > 0) {
+        this.healthCache = { ...status, checkedAt: Date.now() };
+      }
+      return status;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      log("warn", "health_probe_failed", {
+        upstream: heartbeatUrl,
+        error: err.message,
+        code: getErrorCode(error),
+      });
+      const status: UpstreamHealthStatus = {
+        upstreamReachable: false,
+        upstreamLatencyMs: null,
+      };
+      if (this.healthCacheTtlMs > 0) {
+        this.healthCache = { ...status, checkedAt: Date.now() };
+      }
+      return status;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**
@@ -178,6 +288,81 @@ export class UmamiProxyService {
 
   async proxyRecorderJs(): Promise<ScriptResult> {
     return this.proxyStaticAsset(this.recorderPath, "recorder");
+  }
+
+  async proxyRecorderConfig(websiteId: string, clientIp = "unknown"): Promise<SendResult> {
+    this.ensureInitialized();
+
+    if (!this.rateLimiter.isAllowed(clientIp)) {
+      const retryAfterSeconds = String(Math.max(1, Math.ceil(this.rateLimitWindowMs / 1000)));
+      log("warn", "rate_limited", { clientIp, type: "recorder_config", websiteId });
+      return {
+        status: 429,
+        headers: {
+          "Retry-After": retryAfterSeconds,
+        },
+        body: Buffer.from(JSON.stringify({ error: "Too Many Requests" })),
+      };
+    }
+
+    if (!this.isValidWebsite(websiteId)) {
+      log("warn", "invalid_website_recorder", { websiteId });
+      return {
+        status: 400,
+        body: Buffer.from(
+          JSON.stringify({ error: "Unknown website ID" })
+        ),
+      };
+    }
+
+    const upstreamUrl = `${this.upstreamBase}/api/websites/${encodeURIComponent(websiteId)}/recorder`;
+
+    log("info", "proxy_request", {
+      type: "recorder_config",
+      upstream: upstreamUrl,
+      websiteId,
+    });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(upstreamUrl, {
+        method: "GET",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Umami Proxy/1.0)",
+        },
+      });
+
+      const body = Buffer.from(await response.arrayBuffer());
+      const headers: Record<string, string> = {
+        "Content-Type": response.headers.get("content-type") || "application/json",
+        "Cache-Control": response.headers.get("cache-control") || "no-cache",
+      };
+      const retryAfter = response.headers.get("retry-after");
+      if (retryAfter) {
+        headers["Retry-After"] = retryAfter;
+      }
+
+      log("info", "proxy_success", {
+        type: "recorder_config",
+        status: response.status,
+        bodySize: body.length,
+      });
+
+      return { status: response.status, headers, body };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      log("error", "proxy_error", {
+        type: "recorder_config",
+        error: err.message,
+        code: getErrorCode(error),
+      });
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private async proxyStaticAsset(assetPath: string, logLabel: string): Promise<ScriptResult> {
@@ -227,7 +412,7 @@ export class UmamiProxyService {
       log("error", "proxy_error", {
         type: logLabel,
         error: err.message,
-        code: (error as NodeJS.ErrnoException).code,
+        code: getErrorCode(error),
       });
       throw error;
     } finally {
@@ -241,9 +426,19 @@ export class UmamiProxyService {
     userAgent: string,
     origin: string | undefined,
     websiteId?: string,
-    umamiCache?: string
+    umamiCache?: string,
+    extraHeaders?: Omit<DataForwardHeaders, "umamiCache">
   ): Promise<SendResult> {
-    return this.proxyDataRequest(body, clientIp, userAgent, origin, "record", this.recordPath, websiteId, umamiCache);
+    return this.proxyDataRequest(
+      body,
+      clientIp,
+      userAgent,
+      origin,
+      "record",
+      this.recordPath,
+      websiteId,
+      { umamiCache, ...extraHeaders }
+    );
   }
 
   async proxySendRequest(
@@ -252,9 +447,19 @@ export class UmamiProxyService {
     userAgent: string,
     origin: string | undefined,
     websiteId?: string,
-    umamiCache?: string
+    umamiCache?: string,
+    extraHeaders?: Omit<DataForwardHeaders, "umamiCache">
   ): Promise<SendResult> {
-    return this.proxyDataRequest(body, clientIp, userAgent, origin, "send", this.sendPath, websiteId, umamiCache);
+    return this.proxyDataRequest(
+      body,
+      clientIp,
+      userAgent,
+      origin,
+      "send",
+      this.sendPath,
+      websiteId,
+      { umamiCache, ...extraHeaders }
+    );
   }
 
   private async proxyDataRequest(
@@ -265,15 +470,19 @@ export class UmamiProxyService {
     logLabel: string,
     assetPath: string,
     websiteId?: string,
-    umamiCache?: string
+    forwardHeaders: DataForwardHeaders = {}
   ): Promise<SendResult> {
     this.ensureInitialized();
 
     // Rate limit check
     if (!this.rateLimiter.isAllowed(clientIp)) {
-      log("warn", "rate_limited", { clientIp, origin });
+      const retryAfterSeconds = String(Math.max(1, Math.ceil(this.rateLimitWindowMs / 1000)));
+      log("warn", "rate_limited", { clientIp, origin, type: logLabel });
       return {
         status: 429,
+        headers: {
+          "Retry-After": retryAfterSeconds,
+        },
         body: Buffer.from(JSON.stringify({ error: "Too Many Requests" })),
       };
     }
@@ -309,9 +518,15 @@ export class UmamiProxyService {
         "X-Forwarded-For": clientIp,
         "X-Real-IP": clientIp,
       };
-      // Forward x-umami-cache header if present (required for session identification)
-      if (umamiCache) {
-        headers["x-umami-cache"] = umamiCache;
+      // Forward x-umami-* headers when present (session cache & v3.5.0 metadata)
+      if (forwardHeaders.umamiCache) {
+        headers["x-umami-cache"] = forwardHeaders.umamiCache;
+      }
+      if (forwardHeaders.umamiWebsiteId) {
+        headers["x-umami-website-id"] = forwardHeaders.umamiWebsiteId;
+      }
+      if (forwardHeaders.umamiHostname) {
+        headers["x-umami-hostname"] = forwardHeaders.umamiHostname;
       }
 
       const response = await fetch(upstreamUrl, {
@@ -323,6 +538,11 @@ export class UmamiProxyService {
 
       const responseBuffer = await response.arrayBuffer();
       const responseBody = Buffer.from(responseBuffer);
+      const responseHeaders: Record<string, string> = {};
+      const retryAfter = response.headers.get("retry-after");
+      if (retryAfter) {
+        responseHeaders["Retry-After"] = retryAfter;
+      }
 
       log("info", "proxy_success", {
         type: logLabel,
@@ -330,13 +550,17 @@ export class UmamiProxyService {
         responseSize: responseBody.length,
       });
 
-      return { status: response.status, body: responseBody };
+      return {
+        status: response.status,
+        headers: Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined,
+        body: responseBody,
+      };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       log("error", "proxy_error", {
         type: logLabel,
         error: err.message,
-        code: (error as NodeJS.ErrnoException).code,
+        code: getErrorCode(error),
       });
       throw error;
     } finally {

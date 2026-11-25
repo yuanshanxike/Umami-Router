@@ -1,7 +1,11 @@
 import { inject, watch } from 'vue';
 import type { Ref } from 'vue';
 import { UMAMI_RUNTIME_KEY, type UmamiRuntime } from './plugin';
-import type { EventOptions, PageviewOptions } from '../types';
+import type {
+  CaptureExceptionContext,
+  EventOptions,
+  PageviewOptions,
+} from '../types';
 
 export function useTracker() {
   const runtime = inject<UmamiRuntime>(UMAMI_RUNTIME_KEY);
@@ -23,6 +27,10 @@ export function useTracker() {
         const isReady = await runtime.readyPromise;
 
         if (isReady && previousUrl !== newUrl && runtime.tracker.isAutoTrackEnabled()) {
+          if (previousUrl === '' && runtime.tracker.consumeInitialPageviewSkip()) {
+            previousUrl = newUrl;
+            return;
+          }
           await runtime.tracker.pageview(newUrl, previousUrl || undefined);
         }
         previousUrl = newUrl;
@@ -49,6 +57,27 @@ export function useTracker() {
       }
 
       await runtime.tracker.event(options.name, options.data);
+    },
+    identify: async (
+      idOrData: string | Record<string, unknown>,
+      data?: Record<string, unknown>
+    ) => {
+      const isReady = await runtime.readyPromise;
+
+      if (!isReady) {
+        return;
+      }
+
+      await runtime.tracker.identify(idOrData, data);
+    },
+    captureException: async (error: unknown, context?: CaptureExceptionContext) => {
+      const isReady = await runtime.readyPromise;
+
+      if (!isReady) {
+        return;
+      }
+
+      await runtime.tracker.captureException(error, context);
     },
     track: runtime.tracker.track.bind(runtime.tracker),
   };
@@ -79,6 +108,10 @@ export function usePageTrack(getPath: () => string) {
       }
 
       if (isAutoTrackEnabled() && newPath !== previousPath) {
+        if (previousPath === '' && tracker.consumeInitialPageviewSkip()) {
+          previousPath = newPath;
+          return;
+        }
         await tracker.pageview(newPath, previousPath || undefined);
         previousPath = newPath;
       }

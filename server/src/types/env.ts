@@ -3,6 +3,7 @@ export interface UmamiEnv {
   UMAMI_WEBSITE_IDS?: string;
   UMAMI_WEBSITE_ID?: string;
   UMAMI_TIMEOUT_MS?: string;
+  UMAMI_HEALTH_CACHE_TTL_MS?: string;
   UMAMI_RATE_LIMIT_WINDOW_MS?: string;
   UMAMI_RATE_LIMIT_MAX?: string;
   UMAMI_ALLOWED_ORIGINS?: string;
